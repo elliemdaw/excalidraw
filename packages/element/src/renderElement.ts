@@ -1046,7 +1046,7 @@ export function getFreeDrawSvgPath(element: ExcalidrawFreeDrawElement) {
   return strokeToSvgPathData(record);
 }
 
-export function getFreedrawOutlineAsSegments(
+export function getFreedrawAsSegments(
   element: ExcalidrawFreeDrawElement,
   points: [number, number][],
   elementsMap: ElementsMap,
@@ -1100,6 +1100,15 @@ export function getFreedrawOutlineAsSegments(
       ),
     ],
   );
+}
+
+export function getFreedrawOutlineAsSegments(
+  element: ExcalidrawFreeDrawElement,
+  points: [number, number][],
+  elementsMap: ElementsMap,
+) {
+  // TODO: Reimplement after new algo
+  return getFreedrawAsSegments(element, points, elementsMap);
 }
 
 export function getFreedrawOutlinePoints(element: ExcalidrawFreeDrawElement) {
