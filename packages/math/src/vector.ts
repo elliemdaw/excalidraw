@@ -1,4 +1,4 @@
-import type { GlobalPoint, LocalPoint, Vector } from "./types";
+import type { GlobalPoint, LocalPoint, Radians, Vector } from "./types";
 
 /**
  * Create a vector from the x and y coordiante elements.
@@ -158,3 +158,16 @@ export const vectorNormalize = (v: Vector): Vector => {
  * Calculate the right-hand normal of the vector.
  */
 export const vectorNormal = (v: Vector): Vector => vector(v[1], -v[0]);
+
+/**
+ *
+ * @param v The vector to rotate
+ * @param angle The angle to rotate the vector by in radians
+ * @returns The rotated vector
+ */
+export const vectorRotate = (v: Vector, angle: Radians): Vector => {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+
+  return vector(v[0] * cos - v[1] * sin, v[0] * sin + v[1] * cos);
+};

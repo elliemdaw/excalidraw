@@ -1,5 +1,4 @@
 import rough from "roughjs/bin/rough";
-import { getStroke } from "perfect-freehand";
 
 import {
   type GlobalPoint,
@@ -63,6 +62,7 @@ import {
 } from "./typeChecks";
 import { getContainingFrame } from "./frame";
 import { getCornerRadius } from "./utils";
+import { getFreedrawOutlinePolygons } from "./freedraw";
 
 import { ShapeCache } from "./shape";
 
@@ -78,7 +78,6 @@ import type {
   ElementsMap,
 } from "./types";
 
-import type { StrokeOptions } from "perfect-freehand";
 import type { RoughCanvas } from "roughjs/bin/canvas";
 
 // using a stronger invert (100% vs our regular 93%) and saturate
@@ -87,6 +86,18 @@ import type { RoughCanvas } from "roughjs/bin/canvas";
 // desatured, alas...)
 export const IMAGE_INVERT_FILTER =
   "invert(100%) hue-rotate(180deg) saturate(1.25)";
+
+const DEBUG_FREEDRAW_COLORS = [
+  "#e53935",
+  "#8e24aa",
+  "#3949ab",
+  "#1e88e5",
+  "#00897b",
+  "#43a047",
+  "#fdd835",
+  "#fb8c00",
+  "#6d4c41",
+];
 
 const isPendingImageElement = (
   element: ExcalidrawElement,
@@ -439,15 +450,35 @@ const drawElementOnCanvas = (
       context.save();
       context.fillStyle = element.strokeColor;
 
-      const path = getFreeDrawPath2D(element) as Path2D;
-      const fillShape = ShapeCache.get(element);
+      const polygons = getFreedrawOutlinePolygons(element);
 
-      if (fillShape) {
-        rc.draw(fillShape);
+      if (false) {
+        polygons.forEach((polygon, index) => {
+          const polygonPath = new Path2D(getSvgPathFromStroke(polygon));
+          context.fillStyle =
+            DEBUG_FREEDRAW_COLORS[index % DEBUG_FREEDRAW_COLORS.length];
+          context.fill(polygonPath);
+        });
+      } else {
+        const fillShape = ShapeCache.get(element);
+        if (fillShape) {
+          rc.draw(fillShape);
+        }
+
+        context.fillStyle = element.strokeColor;
+
+        if (polygons.length <= 1) {
+          const path =
+            getFreeDrawPath2D(element) ??
+            (generateFreeDrawShape(element) as Path2D);
+          context.fill(path);
+        } else {
+          polygons.forEach((polygon) => {
+            const polygonPath = new Path2D(getSvgPathFromStroke(polygon));
+            context.fill(polygonPath);
+          });
+        }
       }
-
-      context.fillStyle = element.strokeColor;
-      context.fill(path);
 
       context.restore();
       break;
@@ -1040,8 +1071,13 @@ export function getFreeDrawPath2D(element: ExcalidrawFreeDrawElement) {
 }
 
 export function getFreeDrawSvgPath(element: ExcalidrawFreeDrawElement) {
-  return getSvgPathFromStroke(getFreedrawOutlinePoints(element));
+  return getFreedrawOutlinePolygons(element)
+    .map((polygon) => getSvgPathFromStroke(polygon))
+    .filter((path) => path.length > 0)
+    .join(" ");
 }
+
+export { getFreedrawOutlinePoints } from "./freedraw";
 
 export function getFreedrawOutlineAsSegments(
   element: ExcalidrawFreeDrawElement,
@@ -1097,28 +1133,6 @@ export function getFreedrawOutlineAsSegments(
       ),
     ],
   );
-}
-
-export function getFreedrawOutlinePoints(element: ExcalidrawFreeDrawElement) {
-  // If input points are empty (should they ever be?) return a dot
-  const inputPoints = element.simulatePressure
-    ? element.points
-    : element.points.length
-    ? element.points.map(([x, y], i) => [x, y, element.pressures[i]])
-    : [[0, 0, 0.5]];
-
-  // Consider changing the options for simulated pressure vs real pressure
-  const options: StrokeOptions = {
-    simulatePressure: element.simulatePressure,
-    size: element.strokeWidth * 4.25,
-    thinning: 0.6,
-    smoothing: 0.5,
-    streamline: 0.5,
-    easing: (t) => Math.sin((t * Math.PI) / 2), // https://easings.net/#easeOutSine
-    last: true,
-  };
-
-  return getStroke(inputPoints as number[][], options) as [number, number][];
 }
 
 function med(A: number[], B: number[]) {
