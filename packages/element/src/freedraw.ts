@@ -1,5 +1,5 @@
+import polygonClipping from "polygon-clipping";
 import {
-  type LineSegment,
   lineSegment,
   lineSegmentIntersectionPoints,
   type LocalPoint,
@@ -12,10 +12,9 @@ import {
   vectorNormalize,
   vectorScale,
 } from "@excalidraw/math";
-
 import { debugDrawLine } from "@excalidraw/common";
 
-import type { GlobalPoint, Vector } from "@excalidraw/math";
+import type { GlobalPoint, LineSegment, Vector } from "@excalidraw/math";
 
 import type { ExcalidrawFreeDrawElement } from "./types";
 
@@ -233,6 +232,30 @@ const addCapToOutlinePoints = (
   return outline;
 };
 
+const normalizeUnionRing = (points: LocalPoint[]): LocalPoint[] => {
+  if (points.length < 2) {
+    return points;
+  }
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (first[0] === last[0] && first[1] === last[1]) {
+    return points.slice(0, -1);
+  }
+  return points;
+};
+
+const closeUnionRing = (points: LocalPoint[]): LocalPoint[] => {
+  if (points.length < 2) {
+    return points;
+  }
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (first[0] === last[0] && first[1] === last[1]) {
+    return points;
+  }
+  return [...points, first];
+};
+
 const getRadiusFromPressure = (
   pressure: number | undefined,
   prevPoint: LocalPoint,
@@ -264,6 +287,37 @@ const streamlinePoints = (
   return streamlined;
 };
 
+const densifyPoints = (
+  points: readonly LocalPoint[],
+  insertsPerSegment: number,
+): LocalPoint[] => {
+  if (points.length < 2 || insertsPerSegment <= 0) {
+    return [...points];
+  }
+
+  const densified: LocalPoint[] = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i - 1] ?? points[i];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[i + 2] ?? points[i + 1];
+
+    densified.push(p1);
+    for (let step = 1; step <= insertsPerSegment; step++) {
+      const t = step / (insertsPerSegment + 1);
+      densified.push(
+        pointFrom<LocalPoint>(
+          catmullRom(p0[0], p1[0], p2[0], p3[0], t),
+          catmullRom(p0[1], p1[1], p2[1], p3[1], t),
+        ),
+      );
+    }
+  }
+
+  densified.push(points[points.length - 1]);
+  return densified;
+};
+
 export const getFreedrawOutlinePoints = (
   element: ExcalidrawFreeDrawElement,
 ) => {
@@ -277,7 +331,8 @@ export const getFreedrawOutlinePolygons = (
     return [];
   }
   const simulatedPressure = element.pressures.length === 0;
-  const points = streamlinePoints(element.points, 0.6);
+  const points = streamlinePoints(element.points, 0.2);
+  //const points = densifyPoints(streamlinePoints(element.points, 0.2), 2);
   const leftOutlinePoints: LocalPoint[] = [];
   const rightOutlinePoints: LocalPoint[] = [];
   for (let i = 0; i < points.length - 2; i++) {
@@ -363,19 +418,53 @@ export const getFreedrawOutlinePolygons = (
     }
   }
 
-  const [leftStrides, rightStrides] = cutUpStrideAtIntersections(
-    leftOutlinePoints,
-    rightOutlinePoints,
-  );
-
-  const result: [number, number][][] = [];
-  for (let i = 0; i < leftStrides.length; i++) {
-    if (leftStrides[i].length === 0 || rightStrides[i].length === 0) {
-      continue;
-    }
-
-    result.push(addCapToOutlinePoints(leftStrides[i], rightStrides[i]));
+  const outline = addCapToOutlinePoints(leftOutlinePoints, rightOutlinePoints);
+  if (outline.length === 0) {
+    return [];
+  }
+  if (outline.length < 4) {
+    return [outline];
   }
 
-  return result;
+  const segmentOutlines: LocalPoint[][] = [];
+  for (let i = 0; i < leftOutlinePoints.length - 1; i++) {
+    const segmentOutline = addCapToOutlinePoints(
+      [leftOutlinePoints[i], leftOutlinePoints[i + 1]],
+      [rightOutlinePoints[i], rightOutlinePoints[i + 1]],
+    );
+    if (segmentOutline.length > 0) {
+      segmentOutlines.push(segmentOutline);
+    }
+  }
+  if (segmentOutlines.length === 0) {
+    return [outline];
+  }
+
+  let unioned = [];
+  try {
+    unioned = polygonClipping.union(
+      // @ts-ignore
+      ...segmentOutlines.map((segment) => [normalizeUnionRing(segment)]),
+    ) as [number, number][][][];
+  } catch {
+    return [outline];
+  }
+  if (unioned.length === 0) {
+    return [outline];
+  }
+
+  const result: [number, number][][] = [];
+  for (const polygon of unioned) {
+    if (polygon.length === 0) {
+      continue;
+    }
+    for (const ring of polygon) {
+      if (ring.length === 0) {
+        continue;
+      }
+      result.push(closeUnionRing(ring as LocalPoint[]) as [number, number][]);
+    }
+  }
+
+  return result.length > 0 ? result : [outline];
 };

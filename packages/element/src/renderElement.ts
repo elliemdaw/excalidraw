@@ -459,19 +459,10 @@ const drawElementOnCanvas = (
 
       context.fillStyle = element.strokeColor;
 
-      if (polygons.length <= 1) {
-        const path =
-          getFreeDrawPath2D(element) ??
-          (generateFreeDrawShape(element) as Path2D);
-        context.fill(path);
-      } else {
-        polygons.forEach((polygon, index) => {
-          context.fillStyle =
-            DEBUG_FREEDRAW_COLORS[index % DEBUG_FREEDRAW_COLORS.length];
-          const polygonPath = new Path2D(getSvgPathFromStroke(polygon));
-          context.fill(polygonPath);
-        });
-      }
+      const path =
+        getFreeDrawPath2D(element) ??
+        (generateFreeDrawShape(element) as Path2D);
+      context.fill(path, "evenodd");
 
       context.restore();
       break;

@@ -398,6 +398,7 @@ const renderElementToSvg = (
       node.setAttribute("stroke", "none");
       const path = svgRoot.ownerDocument!.createElementNS(SVG_NS, "path");
       path.setAttribute("fill", element.strokeColor);
+      path.setAttribute("fill-rule", "evenodd");
       path.setAttribute("d", getFreeDrawSvgPath(element));
       node.appendChild(path);
 
