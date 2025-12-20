@@ -13,7 +13,7 @@ import {
   vectorNormalize,
   vectorScale,
 } from "@excalidraw/math";
-import { debugDrawLine, debugDrawPoints, hexToRgba } from "@excalidraw/common";
+import { debugDrawLine, hexToRgba } from "@excalidraw/common";
 
 import {
   buildStrokeRecord,
@@ -25,7 +25,6 @@ import {
 } from "@excalidraw/stroke";
 
 import type { ExcalidrawFreeDrawElement } from "./types";
-import { getFreedrawAsSegments } from "./renderElement";
 
 const offset = (
   x: number,
@@ -275,26 +274,93 @@ type FreedrawStrokeBuildOptions = Readonly<{
   applyElementOpacity?: boolean;
 }>;
 
+const catmullRom = (
+  p0: readonly [number, number],
+  p1: readonly [number, number],
+  p2: readonly [number, number],
+  p3: readonly [number, number],
+  t: number,
+): [number, number] => {
+  const t2 = t * t;
+  const t3 = t2 * t;
+  const x =
+    0.5 *
+    (2 * p1[0] +
+      (-p0[0] + p2[0]) * t +
+      (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 +
+      (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3);
+  const y =
+    0.5 *
+    (2 * p1[1] +
+      (-p0[1] + p2[1]) * t +
+      (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 +
+      (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3);
+
+  return [x, y];
+};
+
+const buildInterpolatedSamples = (
+  points: readonly [number, number][],
+  pressures: readonly number[] | undefined,
+  simulatePressure: boolean,
+  extraPointsPerSegment: number,
+): RawSample[] => {
+  if (!points.length) {
+    return [];
+  }
+
+  const samples: RawSample[] = [];
+  let t = 0;
+
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i - 1] ?? points[i];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[i + 2] ?? points[i + 1];
+    const p1Pressure = simulatePressure ? 1 : pressures?.[i] ?? 0.5;
+    const p2Pressure = simulatePressure ? 1 : pressures?.[i + 1] ?? 0.5;
+
+    if (i === 0) {
+      samples.push({
+        x: p1[0],
+        y: p1[1],
+        t: t++,
+        p: Math.max(0.0001, p1Pressure),
+      });
+    }
+
+    for (let step = 1; step <= extraPointsPerSegment; step++) {
+      const ratio = step / (extraPointsPerSegment + 1);
+      const [x, y] = catmullRom(p0, p1, p2, p3, ratio);
+      const p = p1Pressure + (p2Pressure - p1Pressure) * ratio;
+      samples.push({ x, y, t: t++, p: Math.max(0.0001, p) });
+    }
+
+    samples.push({
+      x: p2[0],
+      y: p2[1],
+      t: t++,
+      p: Math.max(0.0001, p2Pressure),
+    });
+  }
+
+  return samples;
+};
+
 export const buildFreedrawStrokeRecord = (
   element: ExcalidrawFreeDrawElement,
   opts: FreedrawStrokeBuildOptions,
 ): StrokeRecord => {
   const applyElementOpacity = opts.applyElementOpacity ?? true;
 
-  const samples: RawSample[] = [];
-
   const points = element.points;
   const pressures = element.pressures;
-
-  for (let i = 0; i < points.length; i++) {
-    const p = element.simulatePressure ? 1 : pressures[i] ?? 0.5; // TODO: Implement simulated pressure curve
-    samples.push({
-      x: points[i][0],
-      y: points[i][1],
-      t: i,
-      p: Math.max(0.0001, p),
-    });
-  }
+  const samples = buildInterpolatedSamples(
+    points,
+    pressures,
+    element.simulatePressure,
+    5,
+  );
 
   if (!samples.length) {
     samples.push({ x: 0, y: 0, t: 0, p: 0.5 });
@@ -324,17 +390,42 @@ export const drawFreedrawStrokeToCanvas2D = (
   element: ExcalidrawFreeDrawElement,
   context: CanvasRenderingContext2D,
 ): void => {
+  const colors = [
+    "#FF0000",
+    "#00FF00",
+    "#0000FF",
+    "#FFFF00",
+    "#00FFFF",
+    "#FF00FF",
+  ];
+
   const t = context.getTransform();
   const scaleX = Math.hypot(t.a, t.b);
   const scaleY = Math.hypot(t.c, t.d);
   const zoom = Math.max(scaleX, scaleY);
 
+  element.points.slice(0, element.points.length - 1).forEach(([x, y], i) => {
+    debugDrawLine(
+      lineSegment(
+        pointFrom<GlobalPoint>(element.x + x, element.y + y),
+        pointFrom<GlobalPoint>(
+          element.x + element.points[i + 1][0],
+          element.y + element.points[i + 1][1],
+        ),
+      ),
+      {
+        permanent: true,
+        color: colors[i % colors.length],
+      },
+    );
+  });
+
   const record = buildFreedrawStrokeRecord(element, {
     dpr: zoom,
     coordSpace: "cssPx",
     applyElementOpacity: false,
-    smoothing: 0.85,
     softnessPx: 1.5,
+    smoothing: 0.7,
   });
 
   // debugDrawPoints(
@@ -353,22 +444,6 @@ export const drawFreedrawStrokeToCanvas2D = (
   //   [], //element.points,
   //   element,
   // );
-
-  const colors = [
-    "#FF0000",
-    "#00FF00",
-    "#0000FF",
-    "#FFFF00",
-    "#00FFFF",
-    "#FF00FF",
-    //"#C0C0C0",
-    //"#800000",
-    // "#808000",
-    // "#008000",
-    // "#800080",
-    // "#008080",
-    // "#000080",
-  ];
 
   const result = strokeToCanvasCompatible(record);
 
