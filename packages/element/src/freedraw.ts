@@ -1,35 +1,20 @@
-// import {
-//   clamp,
-//   normalizeRadians,
-//   pointDistance,
-//   pointDistanceSq,
-//   pointFrom,
-//   pointFromPair,
-//   pointFromVector,
-//   lineSegment,
-//   segmentsIntersectAt,
-//   PRECISION,
-//   vector,
-//   vectorAdd,
-//   vectorMagnitude,
-//   vectorNormalize,
-//   vectorRotate,
-//   vectorScale,
-// } from "@excalidraw/math";
-
 import {
   distanceToLineSegment,
   type LineSegment,
   lineSegment,
   lineSegmentIntersectionPoints,
   type LocalPoint,
+  pointFrom,
   pointFromVector,
+  vector,
   vectorAntiNormal,
   vectorFromPoint,
   vectorNormal,
   vectorNormalize,
   vectorScale,
 } from "@excalidraw/math";
+
+import type { Vector } from "@excalidraw/math";
 
 import type { ExcalidrawFreeDrawElement } from "./types";
 
@@ -876,7 +861,131 @@ const addCapToOutlinePoints = (
   left: LocalPoint[],
   right: LocalPoint[],
 ): LocalPoint[] => {
-  return [...left, ...right.reverse(), left[0]];
+  if (left.length === 0 || right.length === 0) {
+    return [];
+  }
+
+  const midpoint = (a: LocalPoint, b: LocalPoint): LocalPoint =>
+    [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] as LocalPoint;
+
+  const getCapDirection = (isStart: boolean): Vector => {
+    if (left.length < 2 || right.length < 2) {
+      return vector(0, 0);
+    }
+    const index = isStart ? 0 : left.length - 1;
+    const adjacentIndex = isStart ? 1 : left.length - 2;
+    const mid = midpoint(left[index], right[index]);
+    const adjacentMid = midpoint(left[adjacentIndex], right[adjacentIndex]);
+    const dir = isStart
+      ? vectorFromPoint(adjacentMid, mid)
+      : vectorFromPoint(mid, adjacentMid);
+    return vectorNormalize(dir);
+  };
+
+  const catmullRom = (
+    p0: number,
+    p1: number,
+    p2: number,
+    p3: number,
+    t: number,
+  ) => {
+    const t2 = t * t;
+    const t3 = t2 * t;
+    return (
+      0.5 *
+      (2 * p1 +
+        (-p0 + p2) * t +
+        (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 +
+        (-p0 + 3 * p1 - 3 * p2 + p3) * t3)
+    );
+  };
+
+  const buildRoundedCapPoints = (
+    capLeft: LocalPoint,
+    capRight: LocalPoint,
+    capDir: Vector,
+  ): LocalPoint[] => {
+    const center = midpoint(capLeft, capRight);
+    const radius = Math.hypot(capLeft[0] - center[0], capLeft[1] - center[1]);
+    if (radius === 0) {
+      return [capLeft, capRight];
+    }
+
+    const leftAngle = Math.atan2(
+      capLeft[1] - center[1],
+      capLeft[0] - center[0],
+    );
+    const capDirNorm = vectorNormalize(capDir);
+    let sign = 1;
+    if (capDirNorm[0] !== 0 || capDirNorm[1] !== 0) {
+      const midAngleA = leftAngle + Math.PI / 2;
+      const midAngleB = leftAngle - Math.PI / 2;
+      const dotA =
+        Math.cos(midAngleA) * capDirNorm[0] +
+        Math.sin(midAngleA) * capDirNorm[1];
+      const dotB =
+        Math.cos(midAngleB) * capDirNorm[0] +
+        Math.sin(midAngleB) * capDirNorm[1];
+      sign = dotA >= dotB ? 1 : -1;
+    }
+
+    const angles = [
+      leftAngle - sign * (Math.PI / 2),
+      leftAngle,
+      leftAngle + sign * (Math.PI / 2),
+      leftAngle + sign * Math.PI,
+      leftAngle + sign * (Math.PI * 1.5),
+    ];
+
+    const stepsPerSegment = 6;
+    const points: LocalPoint[] = [];
+    for (let i = 1; i < angles.length - 2; i++) {
+      const p0 = angles[i - 1];
+      const p1 = angles[i];
+      const p2 = angles[i + 1];
+      const p3 = angles[i + 2];
+      for (let step = 0; step <= stepsPerSegment; step++) {
+        if (i > 1 && step === 0) {
+          continue;
+        }
+        const t = step / stepsPerSegment;
+        const angle = catmullRom(p0, p1, p2, p3, t);
+        points.push(
+          pointFrom<LocalPoint>(
+            center[0] + Math.cos(angle) * radius,
+            center[1] + Math.sin(angle) * radius,
+          ),
+        );
+      }
+    }
+
+    return points;
+  };
+
+  const startDir = getCapDirection(true);
+  const endDir = getCapDirection(false);
+
+  const endCap = buildRoundedCapPoints(
+    left[left.length - 1],
+    right[right.length - 1],
+    endDir,
+  );
+  const startCap = buildRoundedCapPoints(
+    left[0],
+    right[0],
+    vector(-startDir[0], -startDir[1]),
+  ).reverse();
+
+  const rightReversed = right.slice().reverse();
+  const outline = [
+    ...left,
+    ...endCap.slice(1, -1),
+    ...rightReversed,
+    ...startCap.slice(1, -1),
+    left[0],
+  ];
+
+  return outline;
 };
 
 const getRadiusFromPressure = (
