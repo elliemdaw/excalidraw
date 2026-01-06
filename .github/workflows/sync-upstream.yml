@@ -21,7 +21,7 @@ jobs:
 
       - name: Add upstream and fetch
         run: |
-          git remote add upstream https://github.com/${{ vars.UPSTREAM_REPO }}.git
+          git remote add upstream https://github.com/excalidraw/excalidraw.git
           git fetch upstream
 
       - name: Detect default branches
