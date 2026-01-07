@@ -2,7 +2,7 @@ name: Sync Upstream
 
 on:
   schedule:
-    - cron: '0 9 * * 1'  # Every Monday at 9am UTC
+    - cron: '0 9 * * 4'  # Every Thursday at 9am UTC
   workflow_dispatch:  # Manual trigger
 
 jobs:
