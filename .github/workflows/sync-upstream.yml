@@ -19,6 +19,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+      - name: Preserve our sync workflow
+        run: |
+          cp .github/workflows/sync-upstream.yml /tmp/sync-upstream.yml
+
       - name: Add upstream and fetch
         run: |
           git remote add upstream https://github.com/excalidraw/excalidraw.git
@@ -36,22 +40,36 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Update upstream branch
+      - name: Update tracks-upstream branch
         run: |
-          git checkout -B upstream upstream/${{ steps.branches.outputs.upstream_branch }}
-          git push origin upstream --force
+          git checkout -B tracks-upstream upstream/${{ steps.branches.outputs.upstream_branch }}
+
+      - name: Disable upstream workflows
+        run: |
+          # Remove all upstream workflows
+          rm -rf .github/workflows/*
+          # Restore our sync workflow
+          mkdir -p .github/workflows
+          cp /tmp/sync-upstream.yml .github/workflows/sync-upstream.yml
+          # Commit the workflow changes
+          git add .github/workflows/
+          git commit -m "Disable upstream workflows" || echo "No workflow changes to commit"
+
+      - name: Push to origin
+        run: |
+          git push origin tracks-upstream --force
 
       - name: Create PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           BASE="${{ steps.branches.outputs.fork_branch }}"
-          existing=$(gh pr list --head upstream --base "$BASE" --json number -q '.[0].number')
+          existing=$(gh pr list --head tracks-upstream --base "$BASE" --json number -q '.[0].number')
           if [ -z "$existing" ]; then
             gh pr create \
               --title "⬆️ Sync upstream changes ($(date +%Y-%m-%d))" \
               --body "Weekly sync from upstream repository." \
-              --head upstream \
+              --head tracks-upstream \
               --base "$BASE"
           else
             echo "PR #$existing already exists"
