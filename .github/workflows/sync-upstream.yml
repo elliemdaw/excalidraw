@@ -31,21 +31,9 @@ jobs:
           git remote add upstream https://github.com/excalidraw/excalidraw.git
           git fetch upstream
 
-      - name: Detect default branches
-        id: branches
-        run: |
-          # Get upstream default branch
-          UPSTREAM_DEFAULT=$(git remote show upstream | grep 'HEAD branch' | awk '{print $NF}')
-          echo "upstream_branch=$UPSTREAM_DEFAULT" >> $GITHUB_OUTPUT
-          # Get our fork's default branch
-          FORK_DEFAULT=$(gh repo view --json defaultBranchRef -q '.defaultBranchRef.name')
-          echo "fork_branch=$FORK_DEFAULT" >> $GITHUB_OUTPUT
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Update tracks-upstream branch
         run: |
-          git checkout -B tracks-upstream upstream/${{ steps.branches.outputs.upstream_branch }}
+          git checkout -B tracks-upstream upstream/master
 
       - name: Disable upstream workflows
         run: |
@@ -66,14 +54,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          BASE="${{ steps.branches.outputs.fork_branch }}"
-          existing=$(gh pr list --head tracks-upstream --base "$BASE" --json number -q '.[0].number')
+          existing=$(gh pr list --head tracks-upstream --base master --json number -q '.[0].number')
           if [ -z "$existing" ]; then
             gh pr create \
               --title "⬆️ Sync upstream changes ($(date +%Y-%m-%d))" \
               --body "Weekly sync from upstream repository." \
-              --head tracks-upstream \
-              --base "$BASE"
+              --head elliemdaw:tracks-upstream \
+              --base elliemdaw:master
           else
             echo "PR #$existing already exists"
           fi
