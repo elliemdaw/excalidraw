@@ -57,10 +57,11 @@ jobs:
           existing=$(gh pr list --head tracks-upstream --base master --json number -q '.[0].number')
           if [ -z "$existing" ]; then
             gh pr create \
+              --repo ${{ github.repository }} \
               --title "⬆️ Sync upstream changes ($(date +%Y-%m-%d))" \
               --body "Weekly sync from upstream repository." \
-              --head elliemdaw:tracks-upstream \
-              --base elliemdaw:master
+              --head tracks-upstream \
+              --base master
           else
             echo "PR #$existing already exists"
           fi
