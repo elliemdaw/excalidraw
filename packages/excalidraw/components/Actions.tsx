@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import { useRef, useState } from "react";
-import * as Popover from "@radix-ui/react-popover";
+import { Popover } from "radix-ui";
 
 import {
   CLASSES,
@@ -1263,9 +1263,9 @@ export const ShapesSwitcher = ({
               onSelect={() => app.onMagicframeToolSelect()}
               icon={MagicIcon}
               data-testid="toolbar-magicframe"
+              badge={<DropdownMenu.Item.Badge>AI</DropdownMenu.Item.Badge>}
             >
               {t("toolBar.magicframe")}
-              <DropdownMenu.Item.Badge>AI</DropdownMenu.Item.Badge>
             </DropdownMenu.Item>
           )}
         </DropdownMenu.Content>
