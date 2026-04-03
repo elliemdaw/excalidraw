@@ -54,14 +54,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          existing=$(gh pr list --head tracks-upstream --base master --json number -q '.[0].number')
+          existing=$(gh pr list --head tracks-upstream --base master --json number --jq '.[0].number' 2>/dev/null || true)
           if [ -z "$existing" ]; then
             gh pr create \
               --repo ${{ github.repository }} \
-              --title "⬆️ Sync upstream changes ($(date +%Y-%m-%d))" \
+              --title "Sync upstream changes ($(date +%Y-%m-%d))" \
               --body "Weekly sync from upstream repository." \
               --head tracks-upstream \
-              --base master
+              --base master || echo "PR may already exist"
           else
             echo "PR #$existing already exists"
           fi
