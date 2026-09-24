@@ -1,0 +1,67 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    - cron: '0 9 * * 4'  # Every Thursday at 9am UTC
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write      # Needed to push branches
+      pull-requests: write # Needed to create PRs
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Preserve our sync workflow
+        run: |
+          cp .github/workflows/sync-upstream.yml /tmp/sync-upstream.yml
+
+      - name: Add upstream and fetch
+        run: |
+          git remote add upstream https://github.com/excalidraw/excalidraw.git
+          git fetch upstream
+
+      - name: Update tracks-upstream branch
+        run: |
+          git checkout -B tracks-upstream upstream/master
+
+      - name: Disable upstream workflows
+        run: |
+          # Remove all upstream workflows
+          rm -rf .github/workflows/*
+          # Restore our sync workflow
+          mkdir -p .github/workflows
+          cp /tmp/sync-upstream.yml .github/workflows/sync-upstream.yml
+          # Commit the workflow changes
+          git add .github/workflows/
+          git commit -m "Disable upstream workflows" || echo "No workflow changes to commit"
+
+      - name: Push to origin
+        run: |
+          git push origin tracks-upstream --force
+
+      - name: Create PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          existing=$(gh pr list --head tracks-upstream --base master --json number --jq '.[0].number' 2>/dev/null || true)
+          if [ -z "$existing" ]; then
+            gh pr create \
+              --repo ${{ github.repository }} \
+              --title "Sync upstream changes ($(date +%Y-%m-%d))" \
+              --body "Weekly sync from upstream repository." \
+              --head tracks-upstream \
+              --base master || echo "PR may already exist"
+          else
+            echo "PR #$existing already exists"
+          fi
