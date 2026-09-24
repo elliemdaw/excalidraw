@@ -6,6 +6,7 @@ import "@excalidraw/utils/test-utils";
 
 import type {
   ExcalidrawArrowElement,
+  ExcalidrawBindableElement,
   NonDeleted,
 } from "@excalidraw/element/types";
 
@@ -15,6 +16,8 @@ import * as StaticScene from "../renderer/staticScene";
 
 import { UI, Pointer, Keyboard } from "./helpers/ui";
 import { render, fireEvent, act, unmountComponent } from "./test-utils";
+
+import type { Zoom } from "../types";
 
 unmountComponent();
 
@@ -84,17 +87,19 @@ describe("move element", () => {
       // bind line to two rectangles
       bindBindingElement(
         arrow.get() as NonDeleted<ExcalidrawArrowElement>,
-        rectA.get(),
+        rectA.get() as NonDeleted<ExcalidrawBindableElement>,
         "orbit",
         "start",
         h.app.scene,
+        { value: 1 } as Zoom,
       );
       bindBindingElement(
         arrow.get() as NonDeleted<ExcalidrawArrowElement>,
-        rectB.get(),
+        rectB.get() as NonDeleted<ExcalidrawBindableElement>,
         "orbit",
         "end",
         h.app.scene,
+        { value: 1 } as Zoom,
       );
     });
 
